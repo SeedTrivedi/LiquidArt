@@ -1,1 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>The Sanctuary Portal - Panch Bhuta AR</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0b0d0c;
+            font-family: 'Courier New', monospace;
+            color: #f2efe9;
+        }
+
+        #camera-view {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+
+        #ar-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: auto;
+        }
+
+        .vignette {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            pointer-events: none;
+            box-shadow: inset 0 0 100px rgba(11, 13, 12, 0.8);
+            background: radial-gradient(circle, transparent 50%, rgba(11, 13, 12, 0.6) 100%);
+        }
+
+        .hud-header {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 4;
+            text-align: center;
+            pointer-events: none;
+            background: rgba(11, 13, 12, 0.6);
+            padding: 10px 24px;
+            border-radius: 30px;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(242, 239, 233, 0.2);
+        }
+        .hud-header h1 {
+            font-size: 14px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: #d4af37;
+            margin-bottom: 4px;
+        }
+        .hud-header p {
+            font-size: 11px;
+            letter-spacing: 2px;
+            color: #f2efe9;
+            opacity: 0.8;
+        }
+
+        .elements-bar {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 4;
+            display: flex;
+            gap: 12px;
+            background: rgba(11, 13, 12, 0.75);
+            padding: 10px 16px;
+            border-radius: 40px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(242, 239, 233, 0.15);
+            max-width: 95vw;
+            overflow-x: auto;
+        }
+        .element-btn {
+            background: transparent;
+            border: 1px solid rgba(242, 239, 233, 0.3);
+            color: #f2efe9;
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+        .element-btn.active, .element-btn:hover {
+            background: #d4af37;
+            color: #0b0d0c;
+            border-color: #d4af37;
+            font-weight: bold;
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.4);
+        }
+
+        #permission-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0b0d0c;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            text-align: center;
+        }
+        #permission-screen h2 {
+            font-size: 20px;
+            color: #d4af37;
+            margin-bottom: 12px;
+            letter-spacing: 3px;
+        }
+        #permission-screen p {
+            font-size: 13px;
+            line-height: 1.6;
+            max-width: 320px;
+            margin-bottom: 24px;
+            color: rgba(242, 239, 233, 0.8);
+        }
+        #start-ar-btn {
+            background: #d4af37;
+            color: #0b0d0c;
+            border: none;
+            padding: 14px 32px;
+            font-size: 13px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 25px rgba(212, 175, 55, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <video id="camera-view" autoplay playsinline muted></video>
+    <canvas id="ar-canvas"></canvas>
+    <div class="vignette"></div>
+    <div class="hud-header">
+        <h1>Sanctuary Portal</h1>
+        <p id="current-mode">Tap screen to drop water ripple</p>
+    </div>
+    <div class="elements-bar">
+        <button class="element-btn active" data-element="pond">0. Pond</button>
+        <button class="element-btn" data-element="earth">1. Prithvi</button>
+        <button class="element-btn" data-element="water">2. Jal</button>
+        <button class="element-btn" data-element="fire">3. Agni</button>
+        <button class="element-btn" data-element="air">4. Vayu</button>
+        <button class="element-btn" data-element="space">5. Akasha</button>
+    </div>
+    <div id="permission-screen">
+        <h2>The Living Threshold</h2>
+        <p>Point your camera at your room or artwork to step into the digital sanctuary.</p>
+        <button id="start-ar-btn">Open Portal</button>
+    </div>
+    <script>
+        const video = document.getElementById('camera-view');
+        const canvas = document.getElementById('ar-canvas');
+        const ctx = canvas.getContext('2d');
+        const permissionScreen = document.getElementById('permission-screen');
+        const startBtn = document.getElementById('start-ar-btn');
+        const modeText = document.getElementById('current-mode');
+        const elementBtns = document.querySelectorAll('.element-btn');
+
+        let currentElement = 'pond';
+        let ripples = [];
+        let particles = [];
+        let inkLines = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initInkLines();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function initInkLines() {
+            inkLines = [];
+            for (let i = 0; i < 3; i++) {
+                let cx = Math.random() * canvas.width;
+                let cy = Math.random() * canvas.height;
+                for (let r = 1; r <= 5; r++) {
+                    inkLines.push({ cx, cy, radius: r * 40, angleOffset: Math.random() * Math.PI, speed: (Math.random() - 0.5) * 0.005 });
+                }
+            }
+        }
+
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+                video.srcObject = stream;
+                permissionScreen.style.display = 'none';
+                resizeCanvas();
+                requestAnimationFrame(render);
+            } catch (err) {
+                alert("Camera access is required for the AR portal.");
+            }
+        }
+
+        startBtn.addEventListener('click', startCamera);
+
+        window.addEventListener('pointerdown', (e) => {
+            if (e.target.closest('.elements-bar') || e.target.closest('.hud-header')) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            ripples.push({ x, y, radius: 5, maxRadius: 180, alpha: 0.8 });
+            for (let i = 0; i < 25; i++) {
+                let angle = Math.random() * Math.PI * 2;
+                let speed = Math.random() * 3 + 1;
+                particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: Math.random() * 4 + 2, alpha: 1.0, life: 60, type: currentElement });
+            }
+        });
+
+        elementBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                elementBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentElement = btn.getAttribute('data-element');
+                modeText.textContent = btn.textContent + " Active";
+            });
+        });
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.lineWidth = 1.5;
+            inkLines.forEach(line => {
+                line.angleOffset += line.speed;
+                ctx.strokeStyle = 'rgba(242, 239, 233, 0.35)';
+                ctx.beginPath();
+                for (let i = 0; i <= 60; i++) {
+                    let theta = (i / 60) * Math.PI * 2;
+                    let r = line.radius + Math.sin(theta * 6 + line.angleOffset) * 6;
+                    let px = line.cx + Math.cos(theta) * r;
+                    let py = line.cy + Math.sin(theta) * r;
+                    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.stroke();
+            });
+
+            for (let i = ripples.length - 1; i >= 0; i--) {
+                let r = ripples[i];
+                r.radius += 2.5;
+                r.alpha *= 0.96;
+                ctx.strokeStyle = `rgba(255, 255, 255, ${r.alpha})`;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                if (r.alpha < 0.02 || r.radius > r.maxRadius) ripples.splice(i, 1);
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx; p.y += p.vy; p.alpha -= 1 / p.life;
+                ctx.fillStyle = `rgba(212, 175, 55, ${p.alpha})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+                if (p.alpha <= 0) particles.splice(i, 1);
+            }
+            requestAnimationFrame(render);
+        }
+    </script>
+</body>
+</html>
 
